@@ -1,0 +1,110 @@
+- name: kali linux setting
+  hosts: kali
+  gather_facts: no
+  remote_user: kali
+  become: yes
+ 
+  tasks:
+    - name: package update (apt-get update) 
+      apt:
+        update_cache: yes
+  
+    - name: package installation
+      apt:
+        name:
+          - ethtool
+          - xfce4 
+          - xfce4-goodies 
+          - tightvncserver
+          - autocutsel
+          - clamav
+          - clamav-daemon           
+          - gobuster
+
+    - name: package upgrade (apt-get dist-upgrade)
+      apt:
+        upgrade: dist
+
+    - name: clamav-daemon.service setting
+      systemd:
+        name: clamav-daemon.service
+        state: started
+        enabled: yes
+
+    - name: clamav-freshclam.service setting
+      systemd:
+        name: clamav-freshclam.service
+        state: started
+        enabled: yes
+
+    - name: ssh.service setting
+      systemd:
+        name: ssh.service
+        state: started
+        enabled: yes
+
+    - name: ethtool setting (enable wol feature for driver)
+      changed_when: False
+      command: ethtool -s eth0 wol g
+
+    - name: ethtool auto start setting ("@reboot /usr/sbin/ethtool")
+      ansible.builtin.cron:
+        name: "a job for reboot"
+        special_time: reboot
+        job: "/usr/sbin/ethtool -s eth0 wol g"
+
+    - name: tightvncserver check (passwd)
+      stat: path=/home/kali/.vnc/passwd 
+      register: result
+
+    - name: tightvncserver start (interactive input)
+      become: yes
+      become_user: kali
+      expect:
+        command: tightvncserver :1 -geometry 1280x800 -depth 24
+        responses:
+          "Password:": "********"
+          "Verify:": "********"
+          "Would you like to enter a view-only password (y/n)?": "n"
+      when: not result.stat.exists 
+
+    - name: script deployment (tightvncserver)
+      copy:
+        src: /etc/ansible/material/tightvnc
+        dest: /etc/init.d/
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: script auto start setting (tightvncserver)
+      changed_when: False
+      command: update-rc.d tightvnc defaults
+
+    - name: autocutsel setting (edit file)
+      changed_when: False
+      shell: |
+        cat /home/kali/.vnc/xstartup | grep 'autocutsel -fork'
+        if [ $? != 0 ]; then sed -i '8i autocutsel -fork' /home/kali/.vnc/xstartup;else :;fi
+      args:
+        executable: /bin/bash
+
+    - name: uncompress compressed rockyou files
+      changed_when: False
+      shell: |
+        cd /usr/share/wordlists
+        if [ -e rockyou.txt.gz ]; then gunzip -d rockyou.txt.gz;else :;fi
+
+    - name: clamav schedule scan setting ("0 0 * * * /usr/bin/clamdscan/clamdscan -m --fdpass /")
+      ansible.builtin.cron:
+        name: "clamav schedule scan"
+        minute: "0"
+        hour: "0"
+        job: /usr/bin/clamdscan -m --fdpass /
+
+    - name: excluded directory settings (clamav)
+      changed_when: False
+      shell: |
+        cat /etc/clamav/clamd.conf  | grep 'ExcludePath'
+        if [ $? != 0 ]; then sed -i '$a ExcludePath /usr/lib\nExcludePath /usr/share\nExcludePath /var/lib ' /etc/clamav/clamd.conf;else :;fi
+      args:
+        executable: /bin/bash

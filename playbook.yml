@@ -20,6 +20,10 @@
           - clamav
           - clamav-daemon           
           - gobuster
+          - rsyslog
+          - tor
+          - xclip
+          - wtmpdb
 
     - name: package upgrade (apt-get dist-upgrade)
       apt:
@@ -61,7 +65,7 @@
       become: yes
       become_user: kali
       expect:
-        command: tightvncserver :1 -geometry 1280x800 -depth 24
+        command: tightvncserver :1 -geometry 1512x982 -depth 24
         responses:
           "Password:": "********"
           "Verify:": "********"
@@ -70,15 +74,17 @@
 
     - name: script deployment (tightvncserver)
       copy:
-        src: /etc/ansible/material/tightvnc
-        dest: /etc/init.d/
+        src: ./material/tightvnc.service
+        dest: /etc/systemd/system/
         owner: root
         group: root
         mode: 0755
 
-    - name: script auto start setting (tightvncserver)
-      changed_when: False
-      command: update-rc.d tightvnc defaults
+    - name: tightvnc.service setting
+      systemd:
+        name: tightvnc.service
+        state: started
+        enabled: yes
 
     - name: autocutsel setting (edit file)
       changed_when: False
